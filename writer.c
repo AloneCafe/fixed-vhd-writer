@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
 	fprintf(stdout, "Data: %s\nVHD: %s (offset LBA: %lld)\nTotal bytes to write: %lld\nTotal sectors to write: %lld\nTotal bytes written: %lld\nTotal sectors written: %lld\n",
 		data_file_name, vhd_file_name, lba, data_file_size, data_file_size / 512 + (data_file_size % 512 != 0), total_written_bytes, total_written_bytes / 512 + (total_written_bytes % 512 != 0));
 
-	if (total_written_bytes <= data_file_size) {
+	if (total_written_bytes < data_file_size) {
 		fprintf(stdout, "\n!!! Detected the tail of VHD image file, the writing data has been truncated!\n");
 	}
 
