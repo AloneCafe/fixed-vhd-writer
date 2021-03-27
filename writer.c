@@ -4,11 +4,7 @@
 #include "stdarg.h"
 #include "writer.h"
 
-#ifdef __cplusplus 
-extern "C" {
-#endif
-
-int init_writer_object(writer_object * const wo_p, const char * const name) {
+int init_writer_object(struct writer_object * wo_p, const char * name) {
 	FILE *fp = fopen(name, "rb+");
 	if (fp == NULL) {
 		set_last_error(wo_p, OPEN_FILE_ERROR);
@@ -18,15 +14,15 @@ int init_writer_object(writer_object * const wo_p, const char * const name) {
 	wo_p->fixed = 0;
 	wo_p->vaild = 0;
 	wo_p->size = 0;
-	wo_p->last_error = NO_ERROR;
+	wo_p->last_error = NOERR;
 	return 1;
 }
 
-void release_writer_object(writer_object * const wo_p) {
+void release_writer_object(struct writer_object * wo_p) {
 	fclose(wo_p->vhd_fp);
 }
 
-int vaild_vhd(writer_object * const wo_p) {
+int vaild_vhd(struct writer_object * wo_p) {
 	char vhd_cookie[9] = { 0 };
 	/* the beginning of last sector means VHD cookie */
 	fseek(wo_p->vhd_fp, -512, SEEK_END);
@@ -34,7 +30,7 @@ int vaild_vhd(writer_object * const wo_p) {
 	return strcmp(vhd_cookie, VHD_COOKIE_STRING) == 0 && (wo_p->vaild = 1);
 }
 
-int fixed_vhd(writer_object * const wo_p) {
+int fixed_vhd(struct writer_object * wo_p) {
 	int vhd_type;
 	/* the last sector with offset 0x3C means VHD type */
 	fseek(wo_p->vhd_fp, -512 + 0x3C, SEEK_END);
@@ -42,7 +38,7 @@ int fixed_vhd(writer_object * const wo_p) {
 	return vhd_type == 0x02000000 && (wo_p->fixed = 1);
 }
 
-int64_t size_vhd(writer_object * const wo_p) {
+int64_t size_vhd(struct writer_object * wo_p) {
 	int64_t size;
 	/* the last sector with offset 0x28 means original size */
 	fseek(wo_p->vhd_fp, -512 + 0x28, SEEK_END);
@@ -58,12 +54,12 @@ int64_t size_vhd(writer_object * const wo_p) {
 	return wo_p->size = size;
 }
 
-int write_a_vhd_sector(writer_object * const wo_p, const int64_t lba, const vhd_sector * const sector_p) {
+int write_a_vhd_sector(struct writer_object * wo_p, const int64_t lba, const struct vhd_sector * sector_p) {
 	fseek(wo_p->vhd_fp, lba * 512, SEEK_SET);
 	return fwrite(sector_p->raw, 1, sector_p->vaild_bytes, wo_p->vhd_fp);
 }
 
-int64_t write_hvd_sector_from_data_file(writer_object * const wo_p, const int64_t lba, const char * const name) {
+int64_t write_hvd_sector_from_data_file(struct writer_object * wo_p, int64_t lba, const char * name) {
 	int vaild_bytes, written_bytes;
 	int64_t total_written_bytes = 0, lba_index = lba, lba_max = wo_p->size / 512;
 	if (lba_index < 0 || lba_index >= lba_max) {
@@ -72,7 +68,7 @@ int64_t write_hvd_sector_from_data_file(writer_object * const wo_p, const int64_
 	}
 
 	FILE *fp = fopen(name, "rb");
-	vhd_sector sector;
+	struct vhd_sector sector;
 
 	if (fp == NULL) {
 		set_last_error(wo_p, OPEN_FILE_ERROR);
@@ -90,16 +86,16 @@ int64_t write_hvd_sector_from_data_file(writer_object * const wo_p, const int64_
 	return total_written_bytes;
 }
 
-writer_error get_last_error(const writer_object * const wo_p) {
+enum writer_error get_last_error(const struct writer_object * wo_p) {
 	return wo_p->last_error;
 }
 
-void set_last_error(writer_object * const wo_p, const writer_error last_error) {
+void set_last_error(struct writer_object * wo_p, enum writer_error last_error) {
 	wo_p->last_error = last_error;
 }
 
 
-void _err_msg(const char * const fmt, ...) {
+void _err_msg(const char * fmt, ...) {
 	va_list vl;
 	va_start(vl, fmt);
 	vfprintf(stderr, fmt, vl);
@@ -107,7 +103,7 @@ void _err_msg(const char * const fmt, ...) {
 	va_end(vl);
 }
 
-int64_t get_file_size_by_name(const char * const name) {
+int64_t get_file_size_by_name(const char * name) {
 	fpos_t fpos_begin, fpos_end;
 	int res = 0;
 	FILE *fp = fopen(name, "rb");
@@ -122,13 +118,13 @@ int64_t get_file_size_by_name(const char * const name) {
 
 int main(int argc, char **argv) {
 #define __err(s, ...) _err_msg(s, ##__VA_ARGS__);
-	writer_object wo;
+	struct writer_object wo;
 	int i, j, states = 0;
 	char cc, nc;
 
 	char *vhd_file_name = NULL, *data_file_name = NULL;
 	int64_t lba;
-	option_flag last_option_flag = 0; /* 3 options must be set up */
+	enum option_flag last_option_flag = 0; /* 3 options must be set up */
 
 	if (argc <= 1) {
 		__err("Fixed VHD Writer\n[-h] usage help\n[-r] specify data file name (read)\n[-w] specify VHD file name (write)\n[-a] specify LBA to writing data\n");
@@ -222,7 +218,7 @@ int main(int argc, char **argv) {
 	}
 
 	int64_t total_written_bytes = write_hvd_sector_from_data_file(&wo, lba, data_file_name);
-	writer_error err = get_last_error(&wo);
+	enum writer_error err = get_last_error(&wo);
 	if (err == LBA_OUT_OF_RANGE) {
 		__err("LBA is out of range (0 - %d)", wo.size / 512 - 1);
 		release_writer_object(&wo);
@@ -244,7 +240,3 @@ int main(int argc, char **argv) {
 	release_writer_object(&wo);
 	return 0;
 }
-
-#ifdef __cplusplus 
-}
-#endif
