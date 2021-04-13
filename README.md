@@ -25,8 +25,8 @@ Windows 除了 CLI 版本同样可以通过编译器 (MSVC、MinGW) 编译之外
 
 ## Release 下载
 ### Windows
-* CLI 版本下载: [fvw.exe](https://github.com/yenyuloong/fixed-vhd-writer/blob/master/bin/fvw.exe?raw=true)
-* GUI(MFC) 版本下载：[FixedVHDWriter.exe](https://github.com/yenyuloong/fixed-vhd-writer/blob/master/bin/FixedVHDWriter.exe?raw=true)
+* CLI 版本下载: [fvw.exe](https://github.com/AloneCafe/fixed-vhd-writer/blob/master/bin/fvw.exe?raw=true)
+* GUI(MFC) 版本下载：[FixedVHDWriter.exe](https://github.com/AloneCafe/fixed-vhd-writer/blob/master/bin/FixedVHDWriter.exe?raw=true)
 
 ### Linux/Unix
 请直接本地编译使用
