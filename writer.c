@@ -103,21 +103,101 @@ void _err_msg(const char * fmt, ...) {
 	va_end(vl);
 }
 
-int64_t get_file_size_by_name(const char * name) {
-	fpos_t fpos_begin, fpos_end;
-	int res = 0;
-	FILE *fp = fopen(name, "rb");
-	if (fp == NULL) {
-		return 0; /* error */
-	}
-	if (fgetpos(fp, &fpos_begin)) return 0; /* error */
-	fseek(fp, 0, SEEK_END);
-	if (fgetpos(fp, &fpos_end)) return 0; /* error */
-	return fpos_end - fpos_begin;
+int64_t get_file_size_by_name(const char *name) {
+    FILE *fp = fopen(name, "rb");
+    if (fp == NULL)
+        return 0; 
+
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fclose(fp);
+        return 0; 
+    }
+	
+    long size = ftell(fp);
+    fclose(fp);
+
+    if (size == -1) 
+        return 0; 
+
+    return (int64_t)size; 
 }
+
+// arg parser
+#define MAX_OPTIONS 100
+#define MAX_OPTION_LENGTH 50
+
+typedef struct {
+    char *option;
+    char *value;
+} Option;
+
+typedef struct {
+    Option options[MAX_OPTIONS];
+    int option_count;
+    char **args;
+    int arg_count;
+} ArgParser;
+
+void init_parser(ArgParser *parser) {
+    parser->option_count = 0;
+    parser->arg_count = 0;
+    parser->args = NULL;
+}
+
+int add_option(ArgParser *parser, const char *option, const char *value) {
+    if (parser->option_count >= MAX_OPTIONS) {
+        return -1; // 超过最大选项
+    }
+    parser->options[parser->option_count].option = strdup(option);
+    parser->options[parser->option_count].value = strdup(value);
+    parser->option_count++;
+    return 0;
+}
+
+void parse_args(ArgParser *parser, int argc, char *argv[]) {
+    parser->args = malloc((argc - 1) * sizeof(char *)); 
+    parser->arg_count = 0;
+
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] == '-') {
+            // 处理没有值的选项
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                // 存在值
+                add_option(parser, argv[i], argv[i + 1]);
+                i++; // 跳过值
+            } else {
+                // 没有值
+                add_option(parser, argv[i], NULL);
+            }
+        } else {
+            parser->args[parser->arg_count++] = argv[i];
+        }
+    }
+}
+
+void free_parser(ArgParser *parser) {
+    for (int i = 0; i < parser->option_count; i++) {
+        free(parser->options[i].option);
+        free(parser->options[i].value);
+    }
+    free(parser->args);
+}
+
+// arg paser
+
 
 int main(int argc, char **argv) {
 #define __err(s, ...) _err_msg(s, ##__VA_ARGS__);
+
+	if (argc <= 1) {
+		__err("Fixed VHD Writer\n[-h] usage help\n[-r] specify data file name (read)\n[-w] specify VHD file name (write)\n[-a] specify LBA to writing data\n");
+		return 1;
+	}
+
+	ArgParser parser;
+    init_parser(&parser);
+    parse_args(&parser, argc, argv);
+
 	struct writer_object wo;
 	int i, j, states = 0;
 	char cc, nc;
@@ -126,53 +206,47 @@ int main(int argc, char **argv) {
 	int64_t lba;
 	enum option_flag last_option_flag = 0; /* 3 options must be set up */
 
-	if (argc <= 1) {
-		__err("Fixed VHD Writer\n[-h] usage help\n[-r] specify data file name (read)\n[-w] specify VHD file name (write)\n[-a] specify LBA to writing data\n");
-		return -1;
-	}
 
-	for (i = 1; i < argc; i++) {
-		for (j = 0; argv[i][j] != '\0'; j++) {
-			cc = argv[i][j];
-			nc = argv[i][j + 1];
-
-			switch (states) {
-			case 0:
-				if (cc == '-') states = 1;
-				break;
-
-			case 1: /* after accept '-' */
-				if (cc == 'w' && nc == '\0') states = 2; /* VHD file name (write) */
-				else if (cc == 'a' && nc == '\0') states = 3; /* LBA */
-				else if (cc == 'r' && nc == '\0') states = 4; /* data file name (read) */
-				else if (cc == 'h' && nc == '\0') states = 5; /* usage help */
-				else { __err("Invaild option \'%s\'", argv[i]); return -1; }
-				break;
-
-			case 2: /* after accept '-w' */
-				vhd_file_name = argv[i];
-				last_option_flag |= FLAG_SET_VHD;
-				states = 0;
-				break;
-
-			case 3: /* after accept '-a' */
-				sscanf(argv[i], "%lld", &lba);
-				last_option_flag |= FLAG_SET_LBA;
-				states = 0;
-				break;
-
-			case 4: /* after accept '-r' */
-				data_file_name = argv[i];
-				last_option_flag |= FLAG_SET_DATA_FILE;
-				states = 0;
-				break;
-
-			case 5:
-				__err("Fixed VHD Writer\n[-h] usage help\n[-r] specify data file name (read)\n[-w] specify VHD file name (write)\n[-a] specify LBA to writing data\n");
-				return -1;
+	for (int i = 0; i < parser.option_count; i++) {
+		const char * o = parser.options[i].option;
+		const char * v = parser.options[i].value;
+		if (strcmp(o, "-w") == 0) {
+			if (!v) {
+				__err("VHD image file is not specified");
+				free_parser(&parser);
+				return 1;
 			}
+			vhd_file_name = v;
+			last_option_flag |= FLAG_SET_VHD;
+		} else if (strcmp(o, "-a") == 0) {
+			if (!v) {
+				__err("LBA offset is not specified");
+				free_parser(&parser);
+				return 1;
+			}
+			sscanf(v, "%lld", &lba);
+			last_option_flag |= FLAG_SET_LBA;
+
+		} else if (strcmp(o, "-r") == 0) {
+			if (!v) {
+				__err("Data file is not specified");
+				free_parser(&parser);
+				return 1;
+			}
+			data_file_name = v;
+			last_option_flag |= FLAG_SET_DATA_FILE;
+
+		} else if (strcmp(o, "-h") == 0) {
+			__err("Fixed VHD Writer\n[-h] usage help\n[-r] specify data file name (read)\n[-w] specify VHD file name (write)\n[-a] specify LBA to writing data\n");
+			free_parser(&parser);
+			return 1;
+
+		} else {
+			__err("Invaild option \'%s\'", o); 
+			free_parser(&parser);
+			return 1;
 		}
-	}
+    }
 
 	if ((last_option_flag & FLAG_SET_VHD) == 0) {
 		__err("VHD image file is not specified");
