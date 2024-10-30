@@ -64,7 +64,7 @@ enum option_flag {
 extern "C" {
 #endif
 
-	int init_writer_object(struct writer_object * wo_p, const char * name);
+	int  init_writer_object(struct writer_object * wo_p, const char * name);
 	void release_writer_object(struct writer_object * wo_p);
 	int vaild_vhd(struct writer_object * wo_p);
 	int fixed_vhd(struct writer_object * wo_p);
